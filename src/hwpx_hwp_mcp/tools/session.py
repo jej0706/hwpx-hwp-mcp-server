@@ -66,6 +66,47 @@ def _require_doc(hwp: Any, doc_id: int) -> Any:
     return switched
 
 
+def _get_active_doc_id(hwp: Any) -> int:
+    """Return the XHwpDocuments index of the currently active document.
+
+    Returns ``-1`` if no document is open.
+
+    Matching logic:
+    1. If there is only one document, it is trivially active.
+    2. Otherwise compare ``hwp.Path`` (active doc's full path) against each
+       ``XHwpDocuments.Item(i).FullName``. First hit wins.
+    3. When multiple untitled documents share an empty path, fall back to
+       the last index (most recently added is usually active).
+    """
+    count = _count(hwp)
+    if count == 0:
+        return -1
+    if count == 1:
+        return 0
+
+    try:
+        active_path = ""
+        try:
+            active_path = str(hwp.Path or "")
+        except Exception:  # noqa: BLE001
+            pass
+
+        if active_path:
+            for i in range(count):
+                try:
+                    doc = _doc_at(hwp, i)
+                    full = str(getattr(doc, "FullName", "") or "")
+                    if full == active_path:
+                        return i
+                except Exception:  # noqa: BLE001
+                    continue
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Fallback: most-recently-added index (heuristic).
+    return count - 1
+
+
 def _doc_ref_from_active(hwp: Any, doc_id: int) -> DocumentRef:
     title: Optional[str] = None
     path: Optional[str] = None
@@ -128,7 +169,13 @@ def register(mcp: FastMCP) -> None:
             "Open an HWP or HWPX file and return its doc_id. COM-backed: the "
             "file is loaded in the real Hancom HWP engine. Use doc_id for all "
             "subsequent operations; doc_ids reshuffle when tabs close, so "
-            "re-run list_open_documents if you are unsure."
+            "re-run list_open_documents if you are unsure.\n\n"
+            "IMPORTANT: Before calling this, check if the user already has "
+            "the target file open by calling list_open_documents or "
+            "get_active_document first. If the file is already open, reuse "
+            "its existing doc_id instead of opening a second copy — opening "
+            "an already-open file creates a duplicate window which is "
+            "almost never what the user wants."
         ),
     )
     async def open_document(
@@ -156,14 +203,49 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(
         description=(
-            "Create a brand-new blank HWP document. Set tab=True to add it as "
-            "a new tab in the existing window instead of a new window."
+            "Get a workable document to edit. Default behavior reuses the "
+            "currently-active document if one exists, otherwise creates a "
+            "new blank one. This avoids spawning an extra HWP window when "
+            "the user already has 한글 open.\n\n"
+            "Use cases:\n"
+            "- User says '한글 파일에 ...써줘' and HWP is already open → "
+            "this returns the user's active doc_id (no new window)\n"
+            "- No HWP running → this opens HWP and creates a blank document\n"
+            "- Always force a brand-new document → pass prefer_active=False\n\n"
+            "When creating a new one, it's added as a NEW TAB in the existing "
+            "HWP window (not a new separate window) to keep the workspace "
+            "uncluttered. Set tab=False to create a separate window instead."
         ),
     )
     async def create_new_document(
-        tab: bool = Field(False, description="If True, add as a new tab instead of a new window"),
+        prefer_active: bool = Field(
+            True,
+            description=(
+                "If True (default) and any document is already open in HWP, "
+                "return that document's doc_id without creating a new one. "
+                "Set to False to always create a fresh blank document."
+            ),
+        ),
+        tab: bool = Field(
+            True,
+            description=(
+                "Only used when a new document is actually created. "
+                "If True (default), add as a new tab inside the existing "
+                "HWP window. If False, open a separate new window."
+            ),
+        ),
     ) -> dict:
         def _do(hwp: Any) -> OpenResult:
+            # Reuse path: if any document already exists and caller allows it,
+            # return the active one without creating anything.
+            if prefer_active:
+                active_idx = _get_active_doc_id(hwp)
+                if active_idx >= 0:
+                    _require_doc(hwp, active_idx)
+                    ref = _doc_ref_from_active(hwp, active_idx).model_dump()
+                    return OpenResult(**ref)
+
+            # Otherwise actually create a new document.
             if tab:
                 hwp.add_tab()
             else:
@@ -171,6 +253,30 @@ def register(mcp: FastMCP) -> None:
             doc_id = max(0, _count(hwp) - 1)
             _require_doc(hwp, doc_id)
             return OpenResult(**_doc_ref_from_active(hwp, doc_id).model_dump())
+
+        return to_dict(await session.call(_do))
+
+    @mcp.tool(
+        description=(
+            "Return the currently active document's doc_id and metadata "
+            "without creating or opening anything. Call this FIRST in any "
+            "editing workflow — if the user already has 한글 open, you "
+            "should reuse the active document rather than creating a new "
+            "one (which would spawn an extra HWP window/tab).\n\n"
+            "Raises HwpDocumentNotFound if no document is currently open; "
+            "in that case fall back to create_new_document or open_document."
+        ),
+    )
+    async def get_active_document() -> dict:
+        def _do(hwp: Any) -> DocumentRef:
+            active_idx = _get_active_doc_id(hwp)
+            if active_idx < 0:
+                raise HwpDocumentNotFound(
+                    "현재 열려 있는 한글 문서가 없습니다. "
+                    "create_new_document 또는 open_document 를 먼저 호출하세요."
+                )
+            _require_doc(hwp, active_idx)
+            return _doc_ref_from_active(hwp, active_idx)
 
         return to_dict(await session.call(_do))
 
