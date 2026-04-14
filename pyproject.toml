@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hwpx-hwp-mcp"
+version = "0.1.0"
+description = "MCP server that edits HWP and HWPX files via Hancom HWP COM automation (pyhwpx)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "hwpx-hwp-mcp contributors" }]
+keywords = ["mcp", "hwp", "hwpx", "hancom", "claude"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "mcp[cli]>=1.2.0",
+    # pyhwpx lists pandas and numpy as deps, but on 32-bit Windows Python
+    # 3.10+ there are no prebuilt pandas wheels. We install pyhwpx here
+    # without its deps (see README) and ship a lightweight pandas stub at
+    # runtime that lets pyhwpx import. numpy/pillow/etc are listed below.
+    "pyhwpx>=1.7.2",
+    "pywin32>=306; sys_platform == 'win32'",
+    "pydantic>=2.6",
+    "numpy",
+    "Pillow",
+    "pyperclip",
+    "openpyxl",
+]
+
+[project.optional-dependencies]
+# Install real pandas only if you run 64-bit Python with real Hancom (rare)
+# or on a 32-bit Python interpreter where pandas wheels still exist (3.9 on
+# Windows). Leaving this empty in normal installs is intentional.
+pandas = ["pandas"]
+
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+[project.scripts]
+hwpx-hwp-mcp = "hwpx_hwp_mcp.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "local: tests that require a local Hancom HWP installation (excluded by default)",
+]
+addopts = "-m 'not local'"
+asyncio_mode = "auto"

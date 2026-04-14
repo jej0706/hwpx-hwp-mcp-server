@@ -1,0 +1,52 @@
+name: Unit tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: pytest (Windows, Python ${{ matrix.python-version }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install package dependencies (non-pandas)
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          # mcp / pydantic / numpy / Pillow / pyperclip / openpyxl / pywin32
+          # all have Windows wheels. pandas is intentionally not installed -
+          # the runtime uses backend/pandas_stub.py instead.
+          pip install --only-binary=:all: \
+            "mcp[cli]>=1.2.0" "pydantic>=2.6" numpy Pillow pyperclip openpyxl pywin32
+          # pyhwpx lists pandas as a transitive dep, so install it without deps.
+          pip install --no-deps pyhwpx
+          # Install the package itself without deps (we already installed them).
+          pip install --no-deps -e .
+          pip install pytest pytest-asyncio
+
+      - name: Run unit tests
+        shell: bash
+        run: |
+          pytest tests/unit -v
+
+      - name: Smoke: import server + list tools (no COM)
+        shell: bash
+        run: |
+          python tests/smoke/list_tools.py
