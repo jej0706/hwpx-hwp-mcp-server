@@ -12,9 +12,20 @@ import asyncio
 import sys
 from pathlib import Path
 
+# Reconfigure stdout/stderr to UTF-8 with a replacement fallback so the
+# Korean characters in tool descriptions never hit a ``charmap``/cp1252
+# encoding error. This matters most on Windows consoles (both the default
+# code page on GitHub Actions runners and local cp949 terminals) where the
+# default encoding cannot represent Hangul.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+    except (AttributeError, Exception):  # pragma: no cover - best effort
+        pass
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from hwpx_hwp_mcp import server
+from hwpx_hwp_mcp import server  # noqa: E402
 
 
 def main() -> None:

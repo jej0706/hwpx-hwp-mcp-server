@@ -11,6 +11,12 @@ jobs:
   test:
     name: pytest Windows Python ${{ matrix.python-version }}
     runs-on: windows-latest
+    # Force UTF-8 everywhere so Korean strings in tool descriptions,
+    # error messages, and print statements don't hit 'charmap' codec
+    # failures on the default Windows code page (cp1252 / cp437).
+    env:
+      PYTHONIOENCODING: "utf-8"
+      PYTHONUTF8: "1"
     strategy:
       fail-fast: false
       matrix:
