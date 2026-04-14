@@ -42,31 +42,83 @@ C:\Python313-32\python.exe -c "import struct; print(struct.calcsize('P')*8, 'bit
 
 ## 설치
 
-```powershell
-# 1) 저장소 클론 또는 이 폴더로 이동
-cd path\to\hwpx-hwp-mcp-server
+### 사전 준비
 
-# 2) 비-pandas 의존성을 wheel 로만 설치
+위의 **"왜 32-bit Python 이어야 하나요?"** / **"pandas 는 왜 없나요?"** 섹션을 먼저 읽어주세요. 이 두 제약이 아래 복잡해 보이는 설치 단계의 이유를 전부 설명합니다.
+
+요약:
+- Windows 10/11
+- 한글 2018 이후 설치
+- **32-bit Python 3.11+** (예: `C:\Python313-32`)
+- Git (저장소 클론용)
+
+### 1. 저장소 클론
+
+```powershell
+git clone https://github.com/jej0706/hwpx-hwp-mcp-server.git
+cd hwpx-hwp-mcp-server
+```
+
+### 2. 왜 `pip install -e .` 한 줄로 끝나지 않나요?
+
+평범한 Python 프로젝트라면 `pip install -e .[dev]` 한 줄이면 됩니다. 하지만 이 프로젝트는 **32-bit Windows Python 3.11+ 에 사전 빌드된 pandas wheel 이 없는** 제약이 있어요. `pyhwpx` 가 `pandas` 를 선언적 의존성으로 올려놓았기 때문에, 아무 생각 없이 `pip install pyhwpx` 를 돌리면 pip 가 pandas 소스 빌드를 시도하다가 `Cython/MSBuild` 가 없다고 실패합니다.
+
+그래서 아래 3단계로 나눕니다:
+
+| 단계 | 목적 | 핵심 옵션 |
+|---|---|---|
+| 2-1 | 우리가 실제로 쓰는 의존성만 wheel 로 설치 | `--only-binary=:all:` — 소스 빌드를 **금지**해서, wheel 이 없으면 즉시 에러 |
+| 2-2 | pyhwpx 본체만 넣고 pandas 연쇄 설치 차단 | `--no-deps` — pyhwpx 의 transitive deps (= pandas) 를 **무시** |
+| 2-3 | 이 서버 패키지를 editable 모드로 설치 | `-e` — 소스 변경이 즉시 반영, `--no-deps` 로 pandas 재유입 차단 |
+
+pyhwpx import 시점에 필요한 `import pandas as pd` 는 `backend/pandas_stub.py` 가 `sys.modules['pandas']` 에 가벼운 sentinel 을 미리 주입해서 만족시킵니다. 우리 코드는 실제 pandas 를 호출하는 pyhwpx 메서드 (`table_from_data`, `table_to_df`) 를 모두 우회해서 셀 순회 방식으로 직접 구현했어요.
+
+### 3. 실제 설치 명령
+
+아래 `C:\Python313-32\python.exe` 를 본인이 설치한 32-bit Python 경로로 바꿔주세요. PowerShell 에서 백틱(`` ` ``)은 줄바꿈 문자입니다.
+
+```powershell
+# 2-1) 직접 쓰는 의존성만 wheel 로 설치
 C:\Python313-32\python.exe -m pip install --only-binary=:all: `
     "mcp[cli]" numpy pywin32 pydantic Pillow pyperclip openpyxl
 
-# 3) pyhwpx 를 --no-deps 로 설치 (pandas 소스 빌드 회피)
+# 2-2) pyhwpx 본체만 설치 (pandas 자동 설치 차단)
 C:\Python313-32\python.exe -m pip install --no-deps pyhwpx
 
-# 4) 우리 패키지를 --no-deps 로 설치
+# 2-3) 이 서버를 editable 모드로 설치
 C:\Python313-32\python.exe -m pip install --no-deps -e .
 
-# 5) (선택) 개발용 테스트 도구
+# 2-4) (선택) 유닛 테스트 실행 원하면
 C:\Python313-32\python.exe -m pip install pytest pytest-asyncio
 ```
 
-설치가 잘 됐는지 (COM을 건드리지 않는) 가벼운 확인:
+### 4. 설치 확인
+
+한글 프로그램을 건드리지 않는 가벼운 import 체크:
 
 ```powershell
-python tests/smoke/list_tools.py
+C:\Python313-32\python.exe tests\smoke\list_tools.py
 ```
 
-24개 도구 이름이 출력되면 OK.
+**`38 tools registered:`** 로 시작하는 출력이 나오면 정상입니다.
+
+한글이 실제로 설치되어 있다면 E2E 통합도 확인할 수 있어요:
+
+```powershell
+# 빈 문서 생성 → 텍스트 + 2x2 표 삽입 → HWPX 저장 → 재오픈 → 텍스트 검증
+C:\Python313-32\python.exe tests\smoke\cycle.py
+```
+
+`OK - cycle smoke test passed` 가 나오면 COM 경로까지 전부 동작하는 겁니다.
+
+### 트러블슈팅
+
+| 증상 | 원인 | 해결 |
+|---|---|---|
+| 2-1 단계에서 `ERROR: No matching distribution found for X` | 32-bit Python 3.13 wheel 이 없는 패키지 | 32-bit Python 3.11 또는 3.12 사용 권장 |
+| 2-3 단계에서 `ModuleNotFoundError` | `pip install --no-deps` 인데 필수 의존성이 빠짐 | 2-1 단계의 wheel 목록을 다시 확인 |
+| 설치 확인 단계에서 `ImportError: DLL load failed ... pywin32` | pywin32 사후 설정 스크립트 미실행 | `C:\Python313-32\python.exe -m pip install --force-reinstall pywin32` 재설치 |
+| `list_tools.py` 가 "`CO_E_SERVER_EXEC_FAILURE`" 로 실패 | 64-bit Python 으로 돌리고 있음 | 32-bit 경로의 `python.exe` 로 재실행 |
 
 ## Claude Desktop 연동
 
