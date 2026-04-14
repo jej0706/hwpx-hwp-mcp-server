@@ -1,11 +1,11 @@
 # hwpx-hwp-mcp
 
-Claude에 붙여서 **HWP와 HWPX 파일을 동시에 편집**할 수 있는 MCP 서버입니다. 한/글 프로그램의 COM 자동화(`pyhwpx`)를 백엔드로 사용해 두 포맷 모두 완전 편집이 가능합니다.
+Claude에 붙여서 **HWP와 HWPX 파일을 동시에 편집**할 수 있는 MCP 서버입니다. 한글 프로그램의 COM 자동화(`pyhwpx`)를 백엔드로 사용해 두 포맷 모두 완전 편집이 가능합니다.
 
 ## 특징
 
 - 🟢 **HWP · HWPX 둘 다 완전 편집** — 포맷 감지와 변환이 확장자 기반으로 자동 처리
-- 🟢 **렌더링 충실도 보장** — 한/글 엔진이 직접 열고 저장하므로 실제 출력과 동일
+- 🟢 **렌더링 충실도 보장** — 한글 엔진이 직접 열고 저장하므로 실제 출력과 동일
 - 🟢 **얇은 레이어** — `pyhwpx`의 150+ 메서드 위에 FastMCP 도구만 얹음
 - 🟢 **38개 도구** — 세션 관리 · 읽기/분석 · 템플릿 채우기 · 문서 생성 · 표 조작 · 페이지 레이아웃 · 대량 변환
 
@@ -13,12 +13,12 @@ Claude에 붙여서 **HWP와 HWPX 파일을 동시에 편집**할 수 있는 MCP
 
 - Windows 10/11
 - **32-bit Python 3.11+** ⚠️ 중요: 64-bit Python 아님
-- **한/글(Hancom Office)** 설치 (2018 이후 권장)
+- **한글(Hancom Office)** 설치 (2018 이후 권장)
 - `pyhwpx`, `pywin32`, `mcp[cli]`, `pydantic`
 
 ### 왜 32-bit Python 이어야 하나요?
 
-한/글은 2024 버전까지도 **32-bit COM 서버**입니다 (`C:\Program Files (x86)\Hnc\...\Hwp.exe`). 64-bit Python 에서 `HWPFrame.HwpObject` 를 Dispatch 하면 Windows 의 COM 브리지가 한/글 LocalServer32 를 못 띄워서 `CO_E_SERVER_EXEC_FAILURE (0x80080005)` 로 실패합니다.
+한글은 2024 버전까지도 **32-bit COM 서버**입니다 (`C:\Program Files (x86)\Hnc\...\Hwp.exe`). 64-bit Python 에서 `HWPFrame.HwpObject` 를 Dispatch 하면 Windows 의 COM 브리지가 한글 LocalServer32 를 못 띄워서 `CO_E_SERVER_EXEC_FAILURE (0x80080005)` 로 실패합니다.
 
 **해결**: https://www.python.org/downloads/windows/ 에서 **"Windows installer (32-bit)"** 를 받아 기존 64-bit Python 과 **별도 경로**에 설치하세요 (예: `C:\Python313-32`). 이후 해당 32-bit Python 을 이 MCP 서버 전용으로만 쓰면 됩니다. 시스템 기본 Python 에는 영향 없습니다.
 
@@ -44,7 +44,7 @@ C:\Python313-32\python.exe -c "import struct; print(struct.calcsize('P')*8, 'bit
 
 ```powershell
 # 1) 저장소 클론 또는 이 폴더로 이동
-cd D:\코딩\hwpx-hwp-mcp-server
+cd path\to\hwpx-hwp-mcp-server
 
 # 2) 비-pandas 의존성을 wheel 로만 설치
 C:\Python313-32\python.exe -m pip install --only-binary=:all: `
@@ -98,7 +98,7 @@ WARNING: 64-bit Python detected, but Hancom HWP appears to be installed as 32-bi
     "hwpx-hwp": {
       "command": "uv",
       "args": [
-        "--directory", "D:\\코딩\\hwpx-hwp-mcp-server",
+        "--directory", "path\\to\\hwpx-hwp-mcp-server",
         "run", "hwpx-hwp-mcp"
       ],
       "env": { "PYTHONUTF8": "1" }
@@ -230,14 +230,14 @@ claude mcp add hwpx-hwp -- python -m hwpx_hwp_mcp
 └────────┬──────────────┘
          │
 ┌────────▼──────────────┐
-│  한/글 프로그램        │
+│  한글 프로그램        │
 │  (headless, invisible)│
 └───────────────────────┘
 ```
 
 ### 왜 단일-스레드 executor?
 
-한/글 COM은 **STA(Single-Threaded Apartment)**입니다. `pythoncom.CoInitialize()`가 호출된 그 스레드에서만 COM 호출이 유효합니다. `asyncio.to_thread`는 기본 스레드풀을 공유해서 워커가 요청마다 달라질 수 있기 때문에, 전용 `ThreadPoolExecutor(max_workers=1)`을 `HancomSession`에 박아두고 **모든 pyhwpx 호출을 이 스레드 하나로 직렬화**합니다. 부수 효과로 동시성 제어까지 공짜로 해결됩니다.
+한글 COM은 **STA(Single-Threaded Apartment)**입니다. `pythoncom.CoInitialize()`가 호출된 그 스레드에서만 COM 호출이 유효합니다. `asyncio.to_thread`는 기본 스레드풀을 공유해서 워커가 요청마다 달라질 수 있기 때문에, 전용 `ThreadPoolExecutor(max_workers=1)`을 `HancomSession`에 박아두고 **모든 pyhwpx 호출을 이 스레드 하나로 직렬화**합니다. 부수 효과로 동시성 제어까지 공짜로 해결됩니다.
 
 ## 테스트
 
@@ -247,7 +247,7 @@ pip install -e .[dev]
 pytest
 ```
 
-### 수동 smoke 테스트 (한/글 설치 필요)
+### 수동 smoke 테스트 (한글 설치 필요)
 ```powershell
 python tests/smoke/list_tools.py          # 도구 목록만 — COM 안 씀
 python tests/smoke/cycle.py               # 실제 생성/저장/재오픈
@@ -256,19 +256,19 @@ python tests/smoke/format_roundtrip.py    # hwp/hwpx/pdf/docx 변환
 
 ## 주의사항
 
-- **한/글 설치 필수** — 이 서버는 한/글을 COM으로 제어합니다. 한/글이 없으면 시작 시 친숙한 에러와 함께 종료됩니다.
-- **이미지 경로** — `insert_image`에는 반드시 **절대 경로**를 넘기세요. 상대 경로는 한/글이 다른 디렉토리에서 찾습니다.
+- **한글 설치 필수** — 이 서버는 한글을 COM으로 제어합니다. 한글이 없으면 시작 시 친숙한 에러와 함께 종료됩니다.
+- **이미지 경로** — `insert_image`에는 반드시 **절대 경로**를 넘기세요. 상대 경로는 한글이 다른 디렉토리에서 찾습니다.
 - **동시 요청** — stdio MCP 서버는 도구 호출을 직렬로 처리합니다. 긴 작업 중에는 다른 도구가 대기합니다.
-- **메모리** — 장시간 실행 시 한/글 프로세스가 수백 MB를 사용합니다. 필요하면 Claude Desktop을 재시작하면 됩니다.
-- **`mcp__hwpx-mcp`와의 차이** — 이 서버는 COM 백엔드(실제 한/글 엔진)이고, 기존 `mcp__hwpx-mcp`는 XML 기반입니다. 렌더링 충실도가 중요할 때 이 서버를, 한/글 없이 돌아가야 할 때 저 서버를 쓰세요. 두 서버는 동시 사용 가능합니다.
+- **메모리** — 장시간 실행 시 한글 프로세스가 수백 MB를 사용합니다. 필요하면 Claude Desktop을 재시작하면 됩니다.
+- **`mcp__hwpx-mcp`와의 차이** — 이 서버는 COM 백엔드(실제 한글 엔진)이고, 기존 `mcp__hwpx-mcp`는 XML 기반입니다. 렌더링 충실도가 중요할 때 이 서버를, 한글 없이 돌아가야 할 때 저 서버를 쓰세요. 두 서버는 동시 사용 가능합니다.
 
-## 한/글 창 공유 동작 (중요)
+## 한글 창 공유 동작 (중요)
 
-한/글의 `HWPFrame.HwpObject` COM 서버는 **MultipleUse LocalServer32** 로 등록되어 있어요. 이 말은:
+한글의 `HWPFrame.HwpObject` COM 서버는 **MultipleUse LocalServer32** 로 등록되어 있어요. 이 말은:
 
 - 시스템 전체에 **Hwp.exe 프로세스는 하나만** 실행됩니다.
 - 모든 Python/외부 클라이언트 (`pyhwpx`, `win32com.client` 등) 는 **같은 프로세스에 연결**됩니다.
-- 즉 사용자가 한/글을 실행해둔 상태에서 MCP 도구를 호출하면, MCP 서버는 **사용자가 쓰고 있는 그 한/글 인스턴스를 공유** 합니다.
+- 즉 사용자가 한글을 실행해둔 상태에서 MCP 도구를 호출하면, MCP 서버는 **사용자가 쓰고 있는 그 한글 인스턴스를 공유** 합니다.
 
 ### MCP 서버의 대응
 
@@ -276,18 +276,18 @@ python tests/smoke/format_roundtrip.py    # hwp/hwpx/pdf/docx 변환
 
 | 시나리오 | 동작 |
 |---|---|
-| **Fresh start** (사용자 한/글 없음) | MCP 가 자체 인스턴스를 띄우고 `set_visible(False)` 로 창 숨김. 백그라운드에서 작업. |
-| **Shared with user** (사용자가 이미 한/글 열어둠) | **visibility 를 건드리지 않음.** 사용자 창은 그대로 보이는 상태 유지. MCP 종료 시에도 `hwp.quit()` 이나 `taskkill` 을 호출하지 않아서 사용자 작업이 보존됨. |
+| **Fresh start** (사용자 한글 없음) | MCP 가 자체 인스턴스를 띄우고 `set_visible(False)` 로 창 숨김. 백그라운드에서 작업. |
+| **Shared with user** (사용자가 이미 한글 열어둠) | **visibility 를 건드리지 않음.** 사용자 창은 그대로 보이는 상태 유지. MCP 종료 시에도 `hwp.quit()` 이나 `taskkill` 을 호출하지 않아서 사용자 작업이 보존됨. |
 
 ### 그래도 주의할 점
 
 Shared 시나리오에서도 MCP 도구 실행 중 다음과 같은 일이 일어날 수 있습니다:
 
 - **포커스 이동**: `create_new_document` 가 새 문서 탭을 생성하면 사용자가 작업 중이던 탭에서 새 탭으로 활성 창이 바뀝니다.
-- **사용자 문서 위에 작업**: MCP 가 `open_document` 로 다른 파일을 열면 한/글 창에 새 탭이 추가됩니다.
+- **사용자 문서 위에 작업**: MCP 가 `open_document` 로 다른 파일을 열면 한글 창에 새 탭이 추가됩니다.
 - **진행 상황 노출**: 저장/수정 작업이 사용자 화면에 그대로 보입니다.
 
-병렬 작업을 원한다면 사용자가 한/글을 최소화해두거나, MCP 작업이 끝난 뒤에 본인 작업을 재개하는 걸 권장합니다.
+병렬 작업을 원한다면 사용자가 한글을 최소화해두거나, MCP 작업이 끝난 뒤에 본인 작업을 재개하는 걸 권장합니다.
 
 ## 라이선스
 
