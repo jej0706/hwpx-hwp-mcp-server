@@ -58,19 +58,33 @@ class HancomSession:
     # ------------------------------------------------------------------ internal
 
     def _create_on_worker(self) -> Any:
-        """Create a fresh ``Hwp`` instance. Called on the executor thread only.
+        """Create or reuse a ``Hwp`` instance. Called on the executor thread only.
 
         IMPORTANT: Hancom's ``HwpObject`` COM server is registered as
         ``MultipleUse`` LocalServer32, which means all Python clients connect
-        to the *same* ``Hwp.exe`` process. That process has a single
-        ``Active_XHwpWindow`` shared between us and any 한/글 UI the user
-        already has open. Calling ``set_visible(False)`` under those
-        conditions hides the user's own document.
+        to the *same* ``Hwp.exe`` process whenever it is reachable, and share
+        its ``XHwpWindows`` collection with any 한글 UI the user already has
+        open.
 
-        We therefore detect whether 한/글 was already running before we
-        dispatched. If it was, we leave visibility alone (the user owns that
-        window). If not, we assume the instance is ours alone and can safely
-        hide it so no stray 한/글 window pops up on the user's desktop.
+        History: earlier versions of this function called ``set_visible(False)``
+        when it detected that 한글 was not yet running, to avoid a stray
+        window popping up on the user's desktop when Claude Desktop or
+        ChatGPT first spawned a worker. This caused two real bugs:
+
+        1. The ``_hwp_process_count()`` probe (which shells out to
+           PowerShell) is not 100% reliable from every subprocess context.
+           Transient failures led us to wrongly conclude that Hancom wasn't
+           running and hide the user's real document.
+        2. Even when the probe worked, the hide happened on the ``recreate``
+           path in ``_ensure_on_worker`` — i.e. after a healthcheck failure
+           — and at that point we have no business touching visibility at
+           all because the user may have opened a window in between.
+
+        The simplest robust fix is to never call ``set_visible(False)``.
+        In practice this only means that the first real tool call (which
+        lazily creates the ``Hwp`` instance) causes 한글 to become visible,
+        which is almost always what the user expects: they asked for an
+        edit, the app shows up, the edit happens in plain sight.
         """
         import pythoncom  # type: ignore[import-not-found]
         from pyhwpx import Hwp  # type: ignore[import-not-found]
@@ -86,16 +100,8 @@ class HancomSession:
         except Exception as exc:  # noqa: BLE001
             raise translate_com_error(exc) from exc
 
-        if not hancom_was_already_running:
-            try:
-                hwp.set_visible(False)
-            except Exception:  # noqa: BLE001 - visibility tweak is best-effort
-                logger.debug("set_visible(False) failed; continuing")
-        else:
-            logger.info(
-                "Detected pre-existing Hancom HWP instance; leaving window "
-                "visibility alone to avoid hiding user documents."
-            )
+        # NOTE: we intentionally do NOT call hwp.set_visible(False) here.
+        # See the docstring above for the rationale.
         self._shared_with_user = hancom_was_already_running
 
         try:

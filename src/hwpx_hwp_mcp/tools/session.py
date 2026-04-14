@@ -203,53 +203,49 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(
         description=(
-            "Get a workable document to edit. Default behavior reuses the "
-            "currently-active document if one exists, otherwise creates a "
-            "new blank one. This avoids spawning an extra HWP window when "
-            "the user already has 한글 open.\n\n"
-            "Use cases:\n"
-            "- User says '한글 파일에 ...써줘' and HWP is already open → "
-            "this returns the user's active doc_id (no new window)\n"
-            "- No HWP running → this opens HWP and creates a blank document\n"
-            "- Always force a brand-new document → pass prefer_active=False\n\n"
-            "When creating a new one, it's added as a NEW TAB in the existing "
-            "HWP window (not a new separate window) to keep the workspace "
-            "uncluttered. Set tab=False to create a separate window instead."
+            "Get a workable document to edit in 한글/HWP. "
+            "⚠️ DEFAULT BEHAVIOR: returns the currently-active document if one "
+            "is already open, so the user's existing work is reused and no "
+            "extra window is spawned. THIS IS ALMOST ALWAYS WHAT YOU WANT.\n\n"
+            "Only pass `force_new=True` if the user EXPLICITLY asks for a "
+            "brand-new blank document that must coexist with their existing "
+            "work (e.g. 'create a second empty document in addition to the "
+            "one I have open'). Do NOT pass force_new=True just because the "
+            "user said '새 문서 만들고 표 넣어줘' — in that phrasing '새 "
+            "문서' usually refers to the blank one already on screen.\n\n"
+            "If you are unsure whether a document is already open, call "
+            "`get_active_document` or `list_open_documents` first — they "
+            "have no side effects and will tell you the current state.\n\n"
+            "When a new document actually has to be created, it is added as "
+            "a NEW TAB inside the existing 한글 window (not a separate "
+            "window) to keep the workspace uncluttered."
         ),
     )
     async def create_new_document(
-        prefer_active: bool = Field(
-            True,
+        force_new: bool = Field(
+            False,
             description=(
-                "If True (default) and any document is already open in HWP, "
-                "return that document's doc_id without creating a new one. "
-                "Set to False to always create a fresh blank document."
-            ),
-        ),
-        tab: bool = Field(
-            True,
-            description=(
-                "Only used when a new document is actually created. "
-                "If True (default), add as a new tab inside the existing "
-                "HWP window. If False, open a separate new window."
+                "Default False — reuse the active document if any exists. "
+                "Set to True ONLY when the user explicitly wants an "
+                "additional brand-new blank document alongside whatever is "
+                "already open. Most '한글에 ...써줘' / '표 만들어줘' "
+                "requests should leave this False."
             ),
         ),
     ) -> dict:
         def _do(hwp: Any) -> OpenResult:
-            # Reuse path: if any document already exists and caller allows it,
-            # return the active one without creating anything.
-            if prefer_active:
+            # Default path: reuse the active document if any exists.
+            if not force_new:
                 active_idx = _get_active_doc_id(hwp)
                 if active_idx >= 0:
                     _require_doc(hwp, active_idx)
                     ref = _doc_ref_from_active(hwp, active_idx).model_dump()
                     return OpenResult(**ref)
 
-            # Otherwise actually create a new document.
-            if tab:
-                hwp.add_tab()
-            else:
-                hwp.add_doc()
+            # Force-new path: add a new tab inside the existing window.
+            # (We always use add_tab, never add_doc, because a separate
+            # window is even more disruptive to the user's workspace.)
+            hwp.add_tab()
             doc_id = max(0, _count(hwp) - 1)
             _require_doc(hwp, doc_id)
             return OpenResult(**_doc_ref_from_active(hwp, doc_id).model_dump())

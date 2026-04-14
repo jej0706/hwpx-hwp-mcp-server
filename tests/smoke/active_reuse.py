@@ -4,16 +4,17 @@ User-reported issue: when HWP is already running with a document visible,
 calling ``create_new_document`` spawned an additional window/tab even
 though the user wanted the MCP server to edit the existing document.
 
-The fix: ``create_new_document`` now defaults to ``prefer_active=True`` -
-if any document is already open, its doc_id is returned instead of
-creating a new one. The new ``get_active_document`` tool exposes this
-probe explicitly for callers that want to be defensive.
+The fix: ``create_new_document`` takes ``force_new`` (default False).
+When False (the normal case), if any document is already open its
+doc_id is returned instead of creating a new one. The new
+``get_active_document`` tool exposes the probe explicitly for callers
+that want to be defensive.
 
 This script verifies three things:
 
 1. When HWP has a pre-existing document open, ``create_new_document``
-   (with default prefer_active=True) returns the SAME doc_id as the
-   existing document - XHwpDocuments.Count does NOT increase.
+   (default force_new=False) returns the SAME doc_id as the existing
+   document - XHwpDocuments.Count does NOT increase.
 2. When no document is open, ``create_new_document`` actually creates
    one and Count becomes 1.
 3. ``get_active_document`` returns the active doc_id without creating
@@ -50,7 +51,7 @@ def main() -> None:
     print(f"[seed] docs before reuse test: {count_before}")
     assert count_before >= 1, "failed to seed at least one document"
 
-    # Mirror create_new_document(prefer_active=True) behavior
+    # Mirror create_new_document(force_new=False) behavior
     def reuse(hwp):
         active_idx = _get_active_doc_id(hwp)
         assert active_idx >= 0, f"expected active doc but got {active_idx}"
@@ -70,11 +71,11 @@ def main() -> None:
     )
     print("[1/3] reuse path OK - no new document created")
 
-    # --- Scenario 2: force a new document (prefer_active=False simulation) ---
+    # --- Scenario 2: force a new document (force_new=True simulation) ---
 
     def force_new(hwp):
         before = _count(hwp)
-        hwp.add_tab()  # mirrors create_new_document(prefer_active=False, tab=True)
+        hwp.add_tab()  # mirrors create_new_document(force_new=True)
         after = _count(hwp)
         return before, after
 
