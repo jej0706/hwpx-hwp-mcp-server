@@ -66,6 +66,28 @@ def _require_doc(hwp: Any, doc_id: int) -> Any:
     return switched
 
 
+def _is_blank_doc(hwp: Any, doc_id: int) -> bool:
+    """Return True if the given document is effectively blank.
+
+    "Blank" means: no file path (never saved) AND Modified flag is False.
+    These two conditions together catch the fresh 빈 문서 state Hancom gives
+    you by default when 한글 starts with no file.
+
+    We use this as a hard guard inside ``create_new_document(force_new=True)``
+    so that a user request like "새 한글 창을 열고 표 넣어줘" reuses the
+    existing empty 빈 문서 1 instead of spawning a 빈 문서 2 on top of it
+    (which, on Hancom 2024 installs without tab UI, is perceived as the
+    original window being shoved into the background).
+    """
+    try:
+        doc = _doc_at(hwp, doc_id)
+        full = str(getattr(doc, "FullName", "") or "")
+        modified = bool(getattr(doc, "Modified", False))
+        return not full and not modified
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _get_active_doc_id(hwp: Any) -> int:
     """Return the XHwpDocuments index of the currently active document.
 
@@ -207,6 +229,13 @@ def register(mcp: FastMCP) -> None:
             "⚠️ DEFAULT BEHAVIOR: returns the currently-active document if one "
             "is already open, so the user's existing work is reused and no "
             "extra window is spawned. THIS IS ALMOST ALWAYS WHAT YOU WANT.\n\n"
+            "Even when you pass `force_new=True`, this tool will STILL reuse "
+            "the active document if that document is currently blank (no "
+            "file path, nothing edited yet). A user request like '새 한글 "
+            "창을 열고 표 넣어줘' should therefore just insert the table "
+            "into the empty 빈 문서 1 that's already on screen — a new tab "
+            "will only actually be created when the existing document has "
+            "real content that must be preserved.\n\n"
             "Only pass `force_new=True` if the user EXPLICITLY asks for a "
             "brand-new blank document that must coexist with their existing "
             "work (e.g. 'create a second empty document in addition to the "
@@ -228,8 +257,12 @@ def register(mcp: FastMCP) -> None:
                 "Default False — reuse the active document if any exists. "
                 "Set to True ONLY when the user explicitly wants an "
                 "additional brand-new blank document alongside whatever is "
-                "already open. Most '한글에 ...써줘' / '표 만들어줘' "
-                "requests should leave this False."
+                "already open. Most '한글에 ...써줘' / '표 만들어줘' / "
+                "'새 한글 창 열어서 써줘' requests should leave this "
+                "False. Note that even force_new=True will still reuse the "
+                "active document if it is currently blank — a new tab is "
+                "only created when the existing document already has real "
+                "content."
             ),
         ),
     ) -> dict:
@@ -241,6 +274,19 @@ def register(mcp: FastMCP) -> None:
                     _require_doc(hwp, active_idx)
                     ref = _doc_ref_from_active(hwp, active_idx).model_dump()
                     return OpenResult(**ref)
+
+            # Hard guard against the "새 한글 창 열어줘" prompt pattern:
+            # the LLM will often pass force_new=True because the user
+            # literally said "새 창", but in practice the user's current
+            # 빈 문서 1 is empty and they just want to write into it. If
+            # the active document is blank, silently reuse it — this
+            # prevents the "original window hides, new 빈 문서 2 takes
+            # over" experience on Hancom 2024 installs without tab UI.
+            active_idx = _get_active_doc_id(hwp)
+            if active_idx >= 0 and _is_blank_doc(hwp, active_idx):
+                _require_doc(hwp, active_idx)
+                ref = _doc_ref_from_active(hwp, active_idx).model_dump()
+                return OpenResult(**ref)
 
             # Force-new path: add a new tab inside the existing window.
             # (We always use add_tab, never add_doc, because a separate
