@@ -13,7 +13,17 @@ from typing import AsyncIterator
 from mcp.server.fastmcp import FastMCP
 
 from .backend.hancom_com import session
-from .tools import batch, create, read, session as session_tools, template
+from .tools import (
+    batch,
+    create,
+    edit,
+    format_extra,
+    output,
+    read,
+    session as session_tools,
+    structure,
+    template,
+)
 
 SERVER_NAME = "hwpx-hwp-mcp"
 
@@ -40,3 +50,8 @@ read.register(mcp)
 template.register(mcp)
 create.register(mcp)
 batch.register(mcp)
+# New categories
+edit.register(mcp)
+structure.register(mcp)
+format_extra.register(mcp)
+output.register(mcp)
